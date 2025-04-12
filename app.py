@@ -141,7 +141,7 @@ fig.add_trace(go.Scatter(x=df_plot["Age"], y=df_plot["Total Fund"],
                          mode='lines', name='Total Fund', line=dict(color='black', dash='dash')))
 
 fig.add_vline(x=retirement_age, line=dict(color='orange', dash='dot'),
-              annotation_text="Retirement Age", annotation_position="middle left")
+              annotation_text="Retirement Age", annotation_position="top left")
 fig.add_vline(x=60, line=dict(color='gray', dash='dot'),
               annotation_text="Age 60", annotation_position="top right")
 
@@ -150,7 +150,7 @@ fig.update_layout(
     xaxis_title="Age",
     yaxis_title="Fund Value ($)",
     hovermode="x unified",
-    legend=dict(x=0, y=1),
+    legend=dict(x=1, y=1),
     template="plotly_white"
 )
 
