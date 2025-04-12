@@ -5,10 +5,15 @@ st.title("Custom Retirement Planner")
 
 # --- Inputs ---
 st.header("Investment Inputs")
+
 current_age = st.number_input("Current age", value=30)
 retirement_age = st.number_input("Early retirement age (can access weekday funds)", value=36)
+
+# Dynamically calculate years of investing
+default_years_investing = max(retirement_age - current_age, 0)
+years_investing = st.number_input("Years of investing", value=default_years_investing, min_value=0)
+
 final_age = st.number_input("Expected lifespan", value=90)
-years_investing = st.number_input("Years of investing", value=6)
 annual_return = st.number_input("Annual return (%)", value=7.0) / 100
 investing_days_per_year = st.number_input("Weekdays invested per year", value=260)
 
@@ -57,30 +62,33 @@ else:
     monthly_fv_at_retirement = monthly_investment * (((1 + r_annual / 12) ** (years_investing * 12) - 1) / (r_annual / 12))
     fv_monthly_locked = 0  # None of it locked
 
-# --- Step 4: Remaining amount needed from weekday investments ---
-needed_from_weekdays = max(need_at_retirement - fv_unlocked_initial, 0)
-
-# --- Step 5: Solve for daily investment ---
-denominator = ((1 + r_daily) ** total_investing_days - 1) / r_daily
-weekday_investment = needed_from_weekdays / denominator
-
-# --- Total at 60 ---
 total_locked_fv = fv_locked_initial + fv_monthly_locked
-surplus_at_60 = total_locked_fv - need_at_60
+
+# --- Step 4: Shortfall at 60 and discount it back ---
+shortfall_at_60 = max(need_at_60 - total_locked_fv, 0)
+shortfall_discounted_to_retirement = shortfall_at_60 / ((1 + r_annual) ** (60 - retirement_age))
+
+# --- Step 5: Remaining amount needed from weekday investments ---
+needed_from_weekdays = max(need_at_retirement - fv_unlocked_initial, 0)
+total_needed_from_weekdays = needed_from_weekdays + shortfall_discounted_to_retirement
+
+# --- Step 6: Solve for daily investment ---
+denominator = ((1 + r_daily) ** total_investing_days - 1) / r_daily
+weekday_investment = total_needed_from_weekdays / denominator
 
 # --- Display Results ---
 st.header("Results")
 st.write(f"### Amount needed at age {retirement_age}: ${need_at_retirement:,.0f}")
 st.write(f"Future value of unlocked initial investment: ${fv_unlocked_initial:,.0f}")
-st.write(f"Amount to be covered by weekday investments: ${needed_from_weekdays:,.0f}")
+st.write(f"Initial weekday investment shortfall: ${needed_from_weekdays:,.0f}")
+st.write(f"Shortfall from locked funds (at 60): ${shortfall_at_60:,.0f}")
+st.write(f"Shortfall discounted to age {retirement_age}: ${shortfall_discounted_to_retirement:,.0f}")
 st.success(f"Required investment per weekday: ${weekday_investment:,.2f}")
 
 st.write("---")
 st.write(f"### Locked investment future value at age 60: ${total_locked_fv:,.0f}")
 st.write(f"Required at age 60 to fund to age {final_age}: ${need_at_60:,.0f}")
-if surplus_at_60 >= 0:
-    st.success(f"You will have a surplus of ${surplus_at_60:,.0f} at age 60.")
+if shortfall_at_60 > 0:
+    st.error(f"You will have a shortfall of ${shortfall_at_60:,.0f} at age 60.")
 else:
-    st.error(f"You will have a shortfall of ${-surplus_at_60:,.0f} at age 60.")
-
-# Optional charting or scenario explorer can be added too
+    st.success(f"You will have a surplus of ${-shortfall_at_60:,.0f} at age 60.")
