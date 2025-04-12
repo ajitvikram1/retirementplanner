@@ -38,7 +38,7 @@ use_advanced = st.checkbox("Use Advanced Yearly Investment Editor", value=True)
 if use_advanced:
     default_data = pd.DataFrame({
         "Year": [current_age + i for i in range(years_to_retirement)],
-        "Monthly Unlocked Investment ($)": [3000] * years_to_retirement,
+        "Monthly Unlocked Investment ($)": [10000] * years_to_retirement,
         "Annual Lump Sum Investment ($)": [40000] * years_to_retirement
     })
     edited_data = st.data_editor(default_data, use_container_width=True, num_rows="fixed")
