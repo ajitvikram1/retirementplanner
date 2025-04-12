@@ -20,9 +20,7 @@ monthly_return = (1 + annual_return) ** (1/12) - 1
 initial_investment = st.number_input("Initial Investment ($)", value=300_000)
 locked_fraction = st.slider("Fraction of Initial Investment Locked", 0.0, 1.0, 0.5)
 
-monthly_unlocked = st.number_input("Monthly Unlocked Investment ($)", value=3000)
 monthly_locked = st.number_input("Monthly Locked Investment ($)", value=3000)
-
 target_withdrawal = st.number_input("Target Monthly Withdrawal Before Age 60 ($)", value=10_000)
 
 # --- Timeline ---
@@ -30,6 +28,22 @@ months_total = (lifespan - current_age) * 12
 months_to_retirement = (retirement_age - current_age) * 12
 months_to_60 = (60 - current_age) * 12
 months_post_60 = (lifespan - 60) * 12
+years_to_retirement = retirement_age - current_age
+
+# --- Advanced Investment Editing ---
+st.subheader("Monthly Unlocked Investment Strategy")
+
+use_advanced = st.checkbox("Use Advanced Yearly Investment Editor", value=False)
+
+if use_advanced:
+    default_data = pd.DataFrame({
+        "Year": [current_age + i for i in range(years_to_retirement)],
+        "Monthly Unlocked Investment ($)": [3000] * years_to_retirement
+    })
+    edited_data = st.data_editor(default_data, use_container_width=True, num_rows="fixed")
+    investment_map = dict(zip(edited_data["Year"], edited_data["Monthly Unlocked Investment ($)"]))
+else:
+    monthly_unlocked = st.number_input("Monthly Unlocked Investment ($)", value=3000)
 
 # --- Initialization ---
 unlocked_fund = []
@@ -45,9 +59,15 @@ total_fund.append(unlocked + locked)
 
 # --- Simulation ---
 for month in range(1, months_total + 1):
+    age = current_age + month / 12
+
     # Investment Phase
     if month <= months_to_retirement:
-        unlocked += monthly_unlocked
+        if use_advanced:
+            year = int(np.floor(age))
+            unlocked += investment_map.get(year, 0)
+        else:
+            unlocked += monthly_unlocked
         locked += monthly_locked
 
     # Apply growth
@@ -59,7 +79,7 @@ for month in range(1, months_total + 1):
         if unlocked >= target_withdrawal:
             unlocked -= target_withdrawal
         else:
-            unlocked = 0  # exhausted
+            unlocked = 0
 
     # Track balances
     unlocked_fund.append(unlocked)
@@ -91,7 +111,7 @@ else:
 st.markdown(f"### Maximum Sustainable Monthly Withdrawal After 60: **${withdrawal_post_60:,.0f}**")
 st.markdown(f"Total available at 60: **${combined_at_60:,.0f}**")
 
-# --- Plotting with Plotly ---
+# --- Plotting: Fund Balance Over Time ---
 st.header("Portfolio Growth and Depletion")
 
 months = np.arange(0, months_total + 1)
@@ -105,7 +125,6 @@ df_plot = pd.DataFrame({
 })
 
 fig = go.Figure()
-
 fig.add_trace(go.Scatter(x=df_plot["Age"], y=df_plot["Unlocked Fund"],
                          mode='lines', name='Unlocked Fund', line=dict(color='blue')))
 fig.add_trace(go.Scatter(x=df_plot["Age"], y=df_plot["Locked Fund"],
@@ -113,9 +132,10 @@ fig.add_trace(go.Scatter(x=df_plot["Age"], y=df_plot["Locked Fund"],
 fig.add_trace(go.Scatter(x=df_plot["Age"], y=df_plot["Total Fund"],
                          mode='lines', name='Total Fund', line=dict(color='black', dash='dash')))
 
-# Add retirement and age 60 markers
-fig.add_vline(x=retirement_age, line=dict(color='orange', dash='dot'), annotation_text="Retirement Age", annotation_position="top left")
-fig.add_vline(x=60, line=dict(color='gray', dash='dot'), annotation_text="Age 60", annotation_position="top right")
+fig.add_vline(x=retirement_age, line=dict(color='orange', dash='dot'),
+              annotation_text="Retirement Age", annotation_position="top left")
+fig.add_vline(x=60, line=dict(color='gray', dash='dot'),
+              annotation_text="Age 60", annotation_position="top right")
 
 fig.update_layout(
     title="Fund Balance Over Time",
@@ -127,3 +147,48 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
+
+# --- Optional CSV Download ---
+csv = df_plot.to_csv(index=False).encode('utf-8')
+st.download_button("Download Fund Trajectory CSV", csv, "fund_projection.csv", "text/csv")
+
+# --- Custom Withdrawal After 60 ---
+st.subheader("Custom Post-60 Withdrawal Analysis")
+custom_withdrawal_post_60 = st.number_input("Monthly Withdrawal After Age 60 ($)", value=10_000)
+
+fund_post_60 = combined_at_60
+fund_post_60_trajectory = []
+
+for i in range(months_post_60):
+    fund_post_60 *= (1 + monthly_return)
+    fund_post_60 -= custom_withdrawal_post_60
+    fund_post_60 = max(fund_post_60, 0)
+    fund_post_60_trajectory.append(fund_post_60)
+
+surplus_at_90 = fund_post_60_trajectory[-1]
+
+if surplus_at_90 > 0:
+    st.success(f"At age 90, you will have a **surplus of ${surplus_at_90:,.0f}**.")
+else:
+    st.error("You will **run out of money before age 90** with this post-60 withdrawal amount.")
+
+# --- Plot: Custom Post-60 Withdrawal ---
+ages_post_60 = np.arange(60, lifespan, 1/12)
+df_post60 = pd.DataFrame({
+    "Age": ages_post_60,
+    "Fund Value": fund_post_60_trajectory
+})
+
+fig2 = go.Figure()
+fig2.add_trace(go.Scatter(x=df_post60["Age"], y=df_post60["Fund Value"],
+                          mode='lines', name='Post-60 Fund Value', line=dict(color='purple')))
+
+fig2.update_layout(
+    title=f"Fund Value After Age 60 with ${custom_withdrawal_post_60:,.0f}/mo Withdrawal",
+    xaxis_title="Age",
+    yaxis_title="Fund Value ($)",
+    template="plotly_white",
+    hovermode="x unified"
+)
+
+st.plotly_chart(fig2, use_container_width=True)
