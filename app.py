@@ -1,94 +1,129 @@
 import streamlit as st
 import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
 
-st.title("Custom Retirement Planner")
+# --- Page Config ---
+st.set_page_config(page_title="Retirement Planner", layout="centered")
+st.title("Retirement Planner with Locked Funds")
 
 # --- Inputs ---
-st.header("Investment Inputs")
+st.header("User Inputs")
 
-current_age = st.number_input("Current age", value=30)
-retirement_age = st.number_input("Early retirement age (can access weekday funds)", value=36)
+current_age = st.number_input("Current Age", value=30)
+retirement_age = st.number_input("Early Retirement Age", value=36)
+lifespan = st.number_input("Expected Lifespan", value=90)
 
-# Dynamically calculate years of investing
-default_years_investing = max(retirement_age - current_age, 0)
-years_investing = st.number_input("Years of investing", value=default_years_investing, min_value=0)
+annual_return = st.number_input("Annual Return (%)", value=7.0) / 100
+monthly_return = (1 + annual_return) ** (1/12) - 1
 
-final_age = st.number_input("Expected lifespan", value=90)
-annual_return = st.number_input("Annual return (%)", value=7.0) / 100
-investing_days_per_year = st.number_input("Weekdays invested per year", value=260)
+initial_investment = st.number_input("Initial Investment ($)", value=300_000)
+locked_fraction = st.slider("Fraction of Initial Investment Locked", 0.0, 1.0, 0.5)
 
-initial_investment = st.number_input("Total initial investment ($)", value=300000)
-initial_locked_fraction = st.slider("Fraction of initial investment locked until full retirement", 0.0, 1.0, 0.5)
+monthly_unlocked = st.number_input("Monthly Unlocked Investment ($)", value=3000)
+monthly_locked = st.number_input("Monthly Locked Investment ($)", value=3000)
 
-monthly_investment = st.number_input("Monthly investment amount ($)", value=3000)
-lock_monthly_investment = st.checkbox("Monthly investment locked until full retirement", value=True)
+target_withdrawal = st.number_input("Target Monthly Withdrawal Before Age 60 ($)", value=10_000)
 
-monthly_withdrawal = st.number_input("Target monthly withdrawal ($)", value=10000)
+# --- Timeline ---
+months_total = (lifespan - current_age) * 12
+months_to_retirement = (retirement_age - current_age) * 12
+months_to_60 = (60 - current_age) * 12
+months_post_60 = (lifespan - 60) * 12
 
-# --- Derived Values ---
-total_investing_days = int(years_investing * investing_days_per_year)
-r_daily = (1 + annual_return) ** (1/365) - 1
-r_annual = annual_return
+# --- Initialization ---
+unlocked_fund = []
+locked_fund = []
+total_fund = []
 
-# --- Time Periods ---
-years_until_retirement = retirement_age - current_age
-years_until_full_retirement = final_age - current_age
-years_between_retirements = final_age - retirement_age
-years_post_lock = final_age - 60
-years_pre_lock = 60 - retirement_age
+unlocked = initial_investment * (1 - locked_fraction)
+locked = initial_investment * locked_fraction
 
-# --- Step 1: How much you need at retirement age ---
-withdrawals_pre_lock = monthly_withdrawal * 12
-withdrawals_post_lock = withdrawals_pre_lock
+unlocked_fund.append(unlocked)
+locked_fund.append(locked)
+total_fund.append(unlocked + locked)
 
-def present_value(amount, rate, n_years):
-    return amount * (1 - (1 + rate) ** -n_years) / rate
+# --- Simulation ---
+for month in range(1, months_total + 1):
+    # Investment Phase
+    if month <= months_to_retirement:
+        unlocked += monthly_unlocked
+        locked += monthly_locked
 
-need_at_retirement = present_value(withdrawals_pre_lock, r_annual, years_pre_lock)
-need_at_60 = present_value(withdrawals_post_lock, r_annual, years_post_lock)
+    # Apply growth
+    unlocked *= (1 + monthly_return)
+    locked *= (1 + monthly_return)
 
-# --- Step 2: FV of current unlocked investments ---
-unlocked_initial = initial_investment * (1 - initial_locked_fraction)
-fv_unlocked_initial = unlocked_initial * (1 + r_annual) ** years_until_retirement
+    # Withdrawal Phase
+    if months_to_retirement < month <= months_to_60:
+        if unlocked >= target_withdrawal:
+            unlocked -= target_withdrawal
+        else:
+            unlocked = 0  # exhausted
 
-# --- Step 3: FV of locked initial and monthly investments at 60 ---
-locked_initial = initial_investment * initial_locked_fraction
-fv_locked_initial = locked_initial * (1 + r_annual) ** (60 - current_age)
+    # Track balances
+    unlocked_fund.append(unlocked)
+    locked_fund.append(locked)
+    total_fund.append(unlocked + locked)
 
-if lock_monthly_investment:
-    monthly_fv_at_retirement = monthly_investment * (((1 + r_annual / 12) ** (years_investing * 12) - 1) / (r_annual / 12))
-    fv_monthly_locked = monthly_fv_at_retirement * (1 + r_annual) ** (60 - retirement_age)
+# --- Analysis at Age 60 ---
+unlocked_at_60 = unlocked_fund[months_to_60]
+locked_at_60 = locked_fund[months_to_60]
+combined_at_60 = unlocked_at_60 + locked_at_60
+
+# Compute max sustainable withdrawal after age 60
+if monthly_return > 0:
+    withdrawal_post_60 = combined_at_60 * (monthly_return * (1 + monthly_return) ** months_post_60) / \
+                         ((1 + monthly_return) ** months_post_60 - 1)
 else:
-    monthly_fv_at_retirement = monthly_investment * (((1 + r_annual / 12) ** (years_investing * 12) - 1) / (r_annual / 12))
-    fv_monthly_locked = 0  # None of it locked
-
-total_locked_fv = fv_locked_initial + fv_monthly_locked
-
-# --- Step 4: Shortfall at 60 and discount it back ---
-shortfall_at_60 = max(need_at_60 - total_locked_fv, 0)
-shortfall_discounted_to_retirement = shortfall_at_60 / ((1 + r_annual) ** (60 - retirement_age))
-
-# --- Step 5: Remaining amount needed from weekday investments ---
-needed_from_weekdays = max(need_at_retirement - fv_unlocked_initial, 0)
-total_needed_from_weekdays = needed_from_weekdays + shortfall_discounted_to_retirement
-
-# --- Step 6: Solve for daily investment ---
-denominator = ((1 + r_daily) ** total_investing_days - 1) / r_daily
-weekday_investment = total_needed_from_weekdays / denominator
+    withdrawal_post_60 = combined_at_60 / months_post_60
 
 # --- Display Results ---
 st.header("Results")
-st.write(f"### Amount needed at age {retirement_age}: ${need_at_retirement:,.0f}")
-st.write(f"Future value of unlocked initial investment: ${fv_unlocked_initial:,.0f}")
-st.write(f"Initial weekday investment shortfall: ${needed_from_weekdays:,.0f}")
-st.write(f"Shortfall from locked funds (at 60): ${shortfall_at_60:,.0f}")
-st.write(f"Shortfall discounted to age {retirement_age}: ${shortfall_discounted_to_retirement:,.0f}")
-st.success(f"Required investment per weekday: ${weekday_investment:,.2f}")
 
-st.write("---")
-st.write(f"### Locked investment future value at age 60: ${total_locked_fv:,.0f}")
-st.write(f"Required at age 60 to fund to age {final_age}: ${need_at_60:,.0f}")
-if shortfall_at_60 > 0:
-    st.error(f"You will have a shortfall of ${shortfall_at_60:,.0f} at age 60.")
+# Before 60
+if unlocked_fund[months_to_60] > 0:
+    st.success(f"Unlocked fund at age 60 has a **surplus of ${unlocked_fund[months_to_60]:,.0f}**.")
 else:
-    st.success(f"You will have a surplus of ${-shortfall_at_60:,.0f} at age 60.")
+    st.error("Unlocked fund was **exhausted before age 60**.")
+
+# After 60
+st.markdown(f"### Maximum Sustainable Monthly Withdrawal After 60: **${withdrawal_post_60:,.0f}**")
+st.markdown(f"Total available at 60: **${combined_at_60:,.0f}**")
+
+# --- Plotting with Plotly ---
+st.header("Portfolio Growth and Depletion")
+
+months = np.arange(0, months_total + 1)
+ages = current_age + months / 12
+
+df_plot = pd.DataFrame({
+    "Age": ages,
+    "Unlocked Fund": unlocked_fund,
+    "Locked Fund": locked_fund,
+    "Total Fund": total_fund
+})
+
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(x=df_plot["Age"], y=df_plot["Unlocked Fund"],
+                         mode='lines', name='Unlocked Fund', line=dict(color='blue')))
+fig.add_trace(go.Scatter(x=df_plot["Age"], y=df_plot["Locked Fund"],
+                         mode='lines', name='Locked Fund', line=dict(color='green')))
+fig.add_trace(go.Scatter(x=df_plot["Age"], y=df_plot["Total Fund"],
+                         mode='lines', name='Total Fund', line=dict(color='black', dash='dash')))
+
+# Add retirement and age 60 markers
+fig.add_vline(x=retirement_age, line=dict(color='orange', dash='dot'), annotation_text="Retirement Age", annotation_position="top left")
+fig.add_vline(x=60, line=dict(color='gray', dash='dot'), annotation_text="Age 60", annotation_position="top right")
+
+fig.update_layout(
+    title="Fund Balance Over Time",
+    xaxis_title="Age",
+    yaxis_title="Fund Value ($)",
+    hovermode="x unified",
+    legend=dict(x=0, y=1),
+    template="plotly_white"
+)
+
+st.plotly_chart(fig, use_container_width=True)
