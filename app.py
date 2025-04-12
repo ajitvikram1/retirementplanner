@@ -17,10 +17,11 @@ lifespan = st.number_input("Expected Lifespan", value=90)
 annual_return = st.number_input("Annual Return (%)", value=7.0) / 100
 monthly_return = (1 + annual_return) ** (1 / 12) - 1
 
-initial_investment = st.number_input("Initial Investment ($)", value=300_000)
-locked_fraction = st.slider("Fraction of Initial Investment Locked", 0.0, 1.0, 0.5)
+initial_investment = st.number_input("Initial Investment ($)", value=500_000)
+locked_fraction = st.slider("Fraction of Initial Investment Locked", 0.0, 1.0, 0.35)
+st.write(f"locked investment: {locked_fraction*initial_investment}")
 
-monthly_locked = st.number_input("Monthly Locked Investment ($)", value=3000)
+monthly_locked = st.number_input("Monthly Locked Investment ($)", value=4000)
 target_withdrawal = st.number_input("Target Monthly Withdrawal Before Age 60 ($)", value=10_000)
 
 # --- Timeline ---
@@ -45,7 +46,7 @@ if use_advanced:
     monthly_map = dict(zip(edited_data["Year"], edited_data["Monthly Unlocked Investment ($)"]))
     lump_sum_map = dict(zip(edited_data["Year"], edited_data["Annual Lump Sum Investment ($)"]))
 else:
-    monthly_unlocked = st.number_input("Monthly Unlocked Investment ($)", value=3000)
+    monthly_unlocked = st.number_input("Monthly Unlocked Investment ($)", value=10000)
     lump_sum = st.number_input("Annual Lump Sum Investment ($)", value=40000)
 
 # --- Initialization ---
