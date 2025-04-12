@@ -34,7 +34,7 @@ years_to_retirement = retirement_age - current_age
 # --- Advanced Investment Editing ---
 st.subheader("Monthly and Lump Sum Investment Strategy")
 
-use_advanced = st.checkbox("Use Advanced Yearly Investment Editor", value=True)
+use_advanced = st.checkbox("Use Advanced Yearly Investment Editor", value=False)
 
 if use_advanced:
     default_data = pd.DataFrame({
