@@ -15,7 +15,7 @@ retirement_age = st.number_input("Early Retirement Age", value=36)
 lifespan = st.number_input("Expected Lifespan", value=90)
 
 annual_return = st.number_input("Annual Return (%)", value=7.0) / 100
-monthly_return = (1 + annual_return) ** (1/12) - 1
+monthly_return = (1 + annual_return) ** (1 / 12) - 1
 
 initial_investment = st.number_input("Initial Investment ($)", value=300_000)
 locked_fraction = st.slider("Fraction of Initial Investment Locked", 0.0, 1.0, 0.5)
@@ -31,19 +31,22 @@ months_post_60 = (lifespan - 60) * 12
 years_to_retirement = retirement_age - current_age
 
 # --- Advanced Investment Editing ---
-st.subheader("Monthly Unlocked Investment Strategy")
+st.subheader("Monthly and Lump Sum Investment Strategy")
 
-use_advanced = st.checkbox("Use Advanced Yearly Investment Editor", value=False)
+use_advanced = st.checkbox("Use Advanced Yearly Investment Editor", value=True)
 
 if use_advanced:
     default_data = pd.DataFrame({
         "Year": [current_age + i for i in range(years_to_retirement)],
-        "Monthly Unlocked Investment ($)": [3000] * years_to_retirement
+        "Monthly Unlocked Investment ($)": [3000] * years_to_retirement,
+        "Annual Lump Sum Investment ($)": [40000] * years_to_retirement
     })
     edited_data = st.data_editor(default_data, use_container_width=True, num_rows="fixed")
-    investment_map = dict(zip(edited_data["Year"], edited_data["Monthly Unlocked Investment ($)"]))
+    monthly_map = dict(zip(edited_data["Year"], edited_data["Monthly Unlocked Investment ($)"]))
+    lump_sum_map = dict(zip(edited_data["Year"], edited_data["Annual Lump Sum Investment ($)"]))
 else:
     monthly_unlocked = st.number_input("Monthly Unlocked Investment ($)", value=3000)
+    lump_sum = st.number_input("Annual Lump Sum Investment ($)", value=40000)
 
 # --- Initialization ---
 unlocked_fund = []
@@ -60,14 +63,18 @@ total_fund.append(unlocked + locked)
 # --- Simulation ---
 for month in range(1, months_total + 1):
     age = current_age + month / 12
+    year = int(np.floor(age))
 
     # Investment Phase
     if month <= months_to_retirement:
         if use_advanced:
-            year = int(np.floor(age))
-            unlocked += investment_map.get(year, 0)
+            unlocked += monthly_map.get(year, 0)
+            if month % 12 == 1:  # First month of each year
+                unlocked += lump_sum_map.get(year, 0)
         else:
             unlocked += monthly_unlocked
+            if month % 12 == 1:
+                unlocked += lump_sum
         locked += monthly_locked
 
     # Apply growth
@@ -173,7 +180,7 @@ else:
     st.error("You will **run out of money before age 90** with this post-60 withdrawal amount.")
 
 # --- Plot: Custom Post-60 Withdrawal ---
-ages_post_60 = np.arange(60, lifespan, 1/12)
+ages_post_60 = np.arange(60, lifespan, 1 / 12)
 df_post60 = pd.DataFrame({
     "Age": ages_post_60,
     "Fund Value": fund_post_60_trajectory
